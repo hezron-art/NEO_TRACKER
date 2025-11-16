@@ -1,31 +1,48 @@
 import streamlit as st
 import pandas as pd
+import sqlite3
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sqlalchemy import create_engine
 from config import DB_PATH
 
-st.title("Near-Earth Object (NEO) Tracker Dashboard")
+st.set_page_config(page_title="NEO Tracker Dashboard", layout="wide")
 
-engine = create_engine(f"sqlite:///{DB_PATH}")
-df = pd.read_sql("SELECT * FROM neo_data", con=engine)
+# ---------------------------------------------------------
+# Load Data Safely (SQLite + pandas)
+# ---------------------------------------------------------
+@st.cache_data
+def load_data():
+    conn = sqlite3.connect(DB_PATH)
+    df = pd.read_sql("SELECT * FROM neo_data", conn)
+    conn.close()
+    return df
 
-st.sidebar.header("Filters")
-min_risk = st.sidebar.slider("Minimum Risk Score", 0.0, float(df["risk_score"].max()), 0.0)
-max_risk = st.sidebar.slider("Maximum Risk Score", 0.0, float(df["risk_score"].max()), float(df["risk_score"].max()))
+df = load_data()
 
-filtered_df = df[(df["risk_score"] >= min_risk) & (df["risk_score"] <= max_risk)]
-st.subheader("Filtered NEO Data")
+# ---------------------------------------------------------
+# UI
+# ---------------------------------------------------------
+st.title("🪐 NEO Tracker Dashboard")
+st.write("Real-time analytics for Near-Earth Objects")
+
+st.subheader("Dataset Overview")
+st.dataframe(df.head())
+
+# ---------------------------------------------------------
+# Visualization
+# ---------------------------------------------------------
+st.subheader("NEO Magnitude Distribution")
+
+fig, ax = plt.subplots()
+sns.histplot(df["absolute_magnitude"], ax=ax)
+st.pyplot(fig)
+
+# ---------------------------------------------------------
+# Filtering
+# ---------------------------------------------------------
+st.subheader("Filter by Hazardous Status")
+
+status = st.selectbox("Select Hazardous Flag:", df["is_hazardous"].unique())
+filtered_df = df[df["is_hazardous"] == status]
+
 st.dataframe(filtered_df)
-
-st.subheader("Risk Score vs Miss Distance (km)")
-plt.figure(figsize=(10,5))
-sns.scatterplot(data=filtered_df, x="miss_distance_km", y="risk_score",
-                hue="max_diameter_km", palette="viridis", size="max_diameter_km", sizes=(20,200))
-plt.xlabel("Miss Distance (km)")
-plt.ylabel("Risk Score")
-plt.title("NEO Risk vs Proximity")
-st.pyplot(plt)
-
-st.subheader("Summary Statistics")
-st.write(filtered_df.describe())
